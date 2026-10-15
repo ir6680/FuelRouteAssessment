@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+
+# Python environment
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Django
+db.sqlite3
+staticfiles/
+
+# Tests and logs
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Private/source data
+data/*.csv
+data/cache/
+
+# Editors
+.vscode/
+.idea/
+
+# Local reference datasets and geocoding reports
+data/reference/
