@@ -1,6 +1,7 @@
 
 import logging
 import re
+import time
 
 import requests
 from django.conf import settings
@@ -73,6 +74,8 @@ def get_route(start, finish):
         ]
     }
 
+    response = None
+    request_started = time.perf_counter()
     try:
         response = requests.post(
             url,
@@ -91,6 +94,12 @@ def get_route(start, finish):
     except ValueError as exc:
         _log_provider_failure(exc, api_key)
         raise RouteProviderError("OpenRouteService returned invalid JSON.", 1) from exc
+    finally:
+        logger.info(
+            "routing_provider_request duration_seconds=%.6f http_status=%s",
+            time.perf_counter() - request_started,
+            getattr(response, "status_code", None),
+        )
     features = data.get("features", [])
 
     if not features:

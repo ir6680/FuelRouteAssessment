@@ -72,9 +72,16 @@ def _load_census_file(path, source, required_columns):
     return index
 
 
-@lru_cache(maxsize=1)
-def load_gazetteer():
-    """Load Census Places indexed by normalized name and state."""
+def _file_signature(path):
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+@lru_cache(maxsize=2)
+def _load_gazetteer_cached(_signature):
     return _load_census_file(
         PLACES_PATH,
         "places",
@@ -82,14 +89,31 @@ def load_gazetteer():
     )
 
 
-@lru_cache(maxsize=1)
-def load_county_subdivisions():
-    """Load Census County Subdivisions indexed by normalized name and state."""
+def load_gazetteer():
+    """Load Places indexed by normalized name, refreshing when the file changes."""
+    return _load_gazetteer_cached(_file_signature(PLACES_PATH))
+
+
+load_gazetteer.cache_clear = _load_gazetteer_cached.cache_clear
+
+
+@lru_cache(maxsize=2)
+def _load_county_subdivisions_cached(_signature):
     return _load_census_file(
         COUNTY_SUBDIVISIONS_PATH,
         "county_subdivision",
         {"USPS", "NAME", "INTPTLAT", "INTPTLONG", "GEOID"},
     )
+
+
+def load_county_subdivisions():
+    """Load subdivisions, refreshing when the file changes."""
+    return _load_county_subdivisions_cached(
+        _file_signature(COUNTY_SUBDIVISIONS_PATH)
+    )
+
+
+load_county_subdivisions.cache_clear = _load_county_subdivisions_cached.cache_clear
 
 
 def _candidate_keys(city):

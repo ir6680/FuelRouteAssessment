@@ -1,7 +1,9 @@
 """Cached route and offline fuel-price orchestration."""
 import hashlib
 import json
+import logging
 from pathlib import Path
+import time
 
 from django.conf import settings
 from django.core.cache import cache
@@ -10,7 +12,12 @@ from routing.services.fuel_optimizer import optimize_fuel_stops
 from routing.services.gazetteer import resolve_place
 from routing.services.route_geometry import geometry_length_miles, station_route_position
 from routing.services.route_provider import get_route
-from routing.services.station_provider import FUEL_CSV_PATH, get_fuel_stations_near_route
+from routing.services.station_provider import (
+    get_fuel_stations_near_route,
+    source_data_signature,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_location(value):
@@ -28,7 +35,11 @@ def resolve_location(value):
 
 
 def _cache_key(start, finish):
-    data = {"start": start, "finish": finish, "csv_mtime": FUEL_CSV_PATH.stat().st_mtime_ns if FUEL_CSV_PATH.exists() else None}
+    data = {
+        "start": start,
+        "finish": finish,
+        "station_data_signature": source_data_signature(),
+    }
     digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     return "fuelroute:v2:" + digest
 
@@ -39,22 +50,43 @@ def build_route_result(start_value, finish_value):
     key = _cache_key(start, finish)
     cached = cache.get(key)
     if cached is not None:
+        logger.info("route_cache_lookup hit=true")
         result = cached
         result["api_calls"] = {"routing": 0, "geocoding": 0, "station_discovery": 0}
         result["cache"] = {"hit": True}
         return result
 
+    logger.info("route_cache_lookup hit=false")
+    stage_started = time.perf_counter()
     route = get_route(start, finish)
+    logger.info(
+        "route_provider_result duration_seconds=%.6f geometry_vertex_count=%s",
+        time.perf_counter() - stage_started,
+        len(route.get("geometry", {}).get("coordinates", [])),
+    )
     geometry = route["geometry"]
     route_miles = route["distance_meters"] / 1609.344
     geometry_miles = geometry_length_miles(geometry)
     route_mile_scale = route_miles / geometry_miles if geometry_miles else 0
     nearby, coverage = get_fuel_stations_near_route(geometry)
+    stage_started = time.perf_counter()
     matched = []
     for station in nearby:
         position = station_route_position(station, geometry)
         matched.append({**station, "route_mile": min(route_miles, position["route_mile"] * route_mile_scale), "distance_to_route_miles": position["distance_to_route_miles"]})
+    logger.info(
+        "candidate_route_positioning duration_seconds=%.6f candidate_count=%s geometry_vertex_count=%s",
+        time.perf_counter() - stage_started,
+        len(nearby),
+        len(geometry.get("coordinates", [])),
+    )
+    stage_started = time.perf_counter()
     optimized = optimize_fuel_stops(route_miles, matched)
+    logger.info(
+        "fuel_optimization duration_seconds=%.6f candidate_count=%s",
+        time.perf_counter() - stage_started,
+        len(matched),
+    )
     result = {
         "route": {"type": "Feature", "geometry": geometry, "properties": {"distance_miles": round(route_miles, 2), "duration_minutes": round(route["duration_seconds"] / 60, 2)}},
         "fuel": optimized,

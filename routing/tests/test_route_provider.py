@@ -19,6 +19,7 @@ class RouteProviderTests(SimpleTestCase):
     @patch("routing.services.route_provider.requests.post")
     def test_success_uses_expected_url_key_and_lon_lat_payload(self, post):
         response = Mock()
+        response.status_code = 200
         response.raise_for_status.return_value = None
         response.json.return_value = {
             "features": [{
@@ -28,7 +29,8 @@ class RouteProviderTests(SimpleTestCase):
         }
         post.return_value = response
 
-        result = get_route(self.start, self.finish)
+        with self.assertLogs("routing.services.route_provider", logging.INFO) as captured:
+            result = get_route(self.start, self.finish)
 
         post.assert_called_once_with(
             "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson",
@@ -38,6 +40,9 @@ class RouteProviderTests(SimpleTestCase):
         )
         self.assertEqual(result["distance_meters"], 12345)
         self.assertEqual(result["duration_seconds"], 678)
+        self.assertIn("routing_provider_request duration_seconds=", captured.output[0])
+        self.assertIn("http_status=200", captured.output[0])
+        self.assertNotIn("test-secret-key", captured.output[0])
 
     @patch("routing.services.route_provider.requests.post")
     def test_http_error_is_logged_safely_and_public_error_stays_generic(self, post):

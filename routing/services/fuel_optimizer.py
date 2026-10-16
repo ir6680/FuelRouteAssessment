@@ -141,6 +141,11 @@ def optimize_fuel_stops(route_distance_miles, stations):
         s for s in candidates
         if not s["is_departure_fill"]
     ]
+    candidate_miles = [station["route_mile"] for station in candidates]
+    candidate_indexes = {
+        id(station): candidate_index
+        for candidate_index, station in enumerate(candidates)
+    }
 
     # Destination sentinel: zero price means buy only what is needed.
     destination = {
@@ -166,8 +171,7 @@ def optimize_fuel_stops(route_distance_miles, stations):
 
         # Tank capacity is a hard limit; no epsilon may extend a 500-mile leg.
         limit = position + MAX_RANGE_MILES
-        miles = [s["route_mile"] for s in candidates]
-        end = bisect_right(miles, limit, lo=index + 1)
+        end = bisect_right(candidate_miles, limit, lo=index + 1)
 
         reachable = candidates[index + 1:end]
 
@@ -302,7 +306,7 @@ def optimize_fuel_stops(route_distance_miles, stations):
         if target.get("is_destination"):
             break
 
-        index = candidates.index(target)
+        index = candidate_indexes[id(target)]
 
     consumed = distance / MPG
     leftover = purchased - consumed

@@ -18,6 +18,7 @@ Set `OPENROUTESERVICE_API_KEY` and `DJANGO_SECRET_KEY` in `.env`. Keep `.env` ou
 .\venv\Scripts\python.exe manage.py migrate
 .\venv\Scripts\python.exe manage.py runserver
 .\venv\Scripts\python.exe manage.py test
+.\venv\Scripts\python.exe scripts\benchmark_route.py
 ```
 
 `GET /api/v1/health/` checks liveness; `GET /api/v1/readiness/` checks configuration and source data. `POST /api/v1/route/` accepts JSON:
@@ -37,5 +38,7 @@ The optimizer assumes 10 MPG, 500-mile tank range, and an empty tank at departur
 A city centroid is not a station coordinate, so stations sharing a city may share one coordinate. Stop route miles come from centroid projection onto route geometry, scaled proportionally to OpenRouteService driving distance. Treat proximity, route-mile placement, and stop choices as estimates pending station-level coordinates. Stop metadata labels centroid estimates and marks coordinates as unverified. Prices use the minimum listed price per consistent station ID, in assumed USD/gallon. Missing and ambiguous Gazetteer city/state records are excluded, never assigned guessed coordinates or prices. Fuel consumption is route driving distance / 10 MPG; reported cost is the sum of each stop purchase rounded to cents.
 
 ## Postman
+
+For a repeatable, network-free cold/warm endpoint benchmark, run `scripts/benchmark_route.py`. It mocks only OpenRouteService and does not enforce timing thresholds. Use `scripts/benchmark_route.py --live` to make exactly one uncached OpenRouteService request followed by cached repeats. This requires the configured API key and reports provider, station-load, filtering, route-positioning, optimization, and total request timings. Timing logs contain durations, status, and counts; they omit API credentials and request coordinates.
 
 Import `postman/FuelRouteAPI.postman_collection.json`. Configure `baseUrl` to `http://127.0.0.1:8000` and `start`/`finish` as city/state strings or coordinate objects.

@@ -29,6 +29,8 @@ class RouteApiTests(SimpleTestCase):
         candidate = optimize.call_args.args[1][0]
         self.assertLessEqual(candidate["route_mile"], first.data["route"]["properties"]["distance_miles"])
         route.assert_called_once()
+        stations.assert_called_once()
+        optimize.assert_called_once()
         self.assertEqual(
             route.call_args.args,
             (
@@ -41,6 +43,18 @@ class RouteApiTests(SimpleTestCase):
         response = self.client.post(self.url, {"start": "", "finish": {}}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("start", response.data)
+
+    @patch("routing.services.route_service.source_data_signature")
+    def test_route_cache_key_changes_when_any_input_dataset_changes(self, signature):
+        from routing.services.route_service import _cache_key
+
+        start = {"latitude": 40.7, "longitude": -74.0}
+        finish = {"latitude": 41.8, "longitude": -87.6}
+        signature.return_value = ((1, 10), (2, 20), (3, 30))
+        first = _cache_key(start, finish)
+        signature.return_value = ((1, 10), (2, 20), (4, 31))
+        second = _cache_key(start, finish)
+        self.assertNotEqual(first, second)
 
     @patch("routing.services.route_service.resolve_location", side_effect=ValueError("bad location"))
     def test_unresolvable_location_returns_422(self, _resolve):

@@ -3,12 +3,16 @@ from django.shortcuts import render
 # Create your views here.
 
 from django.conf import settings
+import logging
+import time
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from routing.serializers import RouteRequestSerializer
 from routing.services.route_service import build_route_result
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
@@ -48,6 +52,21 @@ def readiness_check(request):
 @api_view(["POST"])
 def route_view(request):
     """Calculate a driving route and estimate fuel costs."""
+    started = time.perf_counter()
+    response_status = None
+    try:
+        response = _route_view_impl(request)
+        response_status = response.status_code
+        return response
+    finally:
+        logger.info(
+            "route_request_total duration_seconds=%.6f http_status=%s",
+            time.perf_counter() - started,
+            response_status,
+        )
+
+
+def _route_view_impl(request):
     serializer = RouteRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
