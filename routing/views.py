@@ -66,6 +66,10 @@ def route_view(request):
         )
 
 
+# Let the browsable API render named start/finish fields for its POST form.
+route_view.cls.serializer_class = RouteRequestSerializer
+
+
 def _route_view_impl(request):
     serializer = RouteRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

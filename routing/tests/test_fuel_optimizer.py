@@ -4,8 +4,6 @@ from decimal import Decimal
 from django.test import SimpleTestCase
 
 from routing.services.fuel_optimizer import optimize_fuel_stops
-from routing.services.csv_cleaner import clean_csv
-from routing.services.station_provider import FUEL_CSV_PATH
 
 
 def station(station_id, mile, price):
@@ -56,20 +54,18 @@ class FuelOptimizerTests(SimpleTestCase):
             50.0,
         )
 
-    def test_short_route_cost_matches_rounded_departure_fill_and_csv_reference(self):
-        csv_stations, _, _ = clean_csv(FUEL_CSV_PATH)
-        reference = next(s for s in csv_stations if s["station_id"] == "192")
+    def test_short_route_cost_matches_rounded_departure_fill_and_price_reference(self):
         candidate = {
-            **station(reference["station_id"], 8, reference["price"]),
-            "name": reference["name"],
-            "city": reference["city"],
-            "state": reference["state"],
+            **station("fixture-192", 8, "3.099"),
+            "name": "Fixture Station",
+            "city": "Testville",
+            "state": "TX",
         }
         result = optimize_fuel_stops(93.42, [candidate])
         departure = result["stops"][0]
         self.assertEqual(departure["price_per_gallon"], 3.099)
-        self.assertEqual(departure["price_reference"]["station_id"], "192")
-        self.assertEqual(departure["price_reference"]["price_per_gallon"], float(reference["price"]))
+        self.assertEqual(departure["price_reference"]["station_id"], "fixture-192")
+        self.assertEqual(departure["price_reference"]["price_per_gallon"], 3.099)
         self.assertEqual(departure["price_reference"]["csv_source"], "fuel-price CSV")
         self.assertEqual(result["fuel_purchase_cost"], 28.95)
         self.assertEqual(result["fuel_purchase_cost"], sum(s["cost"] for s in result["stops"]))

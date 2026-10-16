@@ -44,6 +44,37 @@ class RouteApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("start", response.data)
 
+    @patch("routing.views.build_route_result", return_value={"route": "ok"})
+    def test_browsable_form_accepts_plain_location_strings(self, build_route):
+        response = self.client.post(
+            self.url,
+            {"start": "Austin, TX", "finish": "Houston, TX"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"route": "ok"})
+        build_route.assert_called_once_with("Austin, TX", "Houston, TX")
+
+    def test_browsable_api_renders_named_route_fields(self):
+        response = self.client.get(self.url, HTTP_ACCEPT="text/html")
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response["Content-Type"].split(";")[0], "text/html")
+        self.assertContains(response, 'name="start"', status_code=405)
+        self.assertContains(response, 'name="finish"', status_code=405)
+
+    @patch("routing.views.build_route_result", return_value={"route": "ok"})
+    def test_json_body_accepts_plain_location_strings(self, build_route):
+        response = self.client.post(
+            self.url,
+            {"start": "Austin, TX", "finish": "Houston, TX"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        build_route.assert_called_once_with("Austin, TX", "Houston, TX")
+
     @patch("routing.services.route_service.source_data_signature")
     def test_route_cache_key_changes_when_any_input_dataset_changes(self, signature):
         from routing.services.route_service import _cache_key

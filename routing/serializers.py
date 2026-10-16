@@ -1,4 +1,6 @@
 
+import json
+
 from rest_framework import serializers
 
 
@@ -22,30 +24,46 @@ class LocationInputSerializer(serializers.Serializer):
         return attrs
 
 
+class LocationField(serializers.Field):
+    """Accept a location string or a JSON-encoded coordinate object."""
+
+    default_error_messages = {
+        "invalid": "Provide a location string or lat/lng object.",
+    }
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            value = data.strip()
+            if not value:
+                raise serializers.ValidationError(
+                    "Provide a non-empty location up to 200 characters."
+                )
+            try:
+                decoded = json.loads(value)
+            except (TypeError, ValueError):
+                decoded = value
+
+            # JSON strings and coordinate objects are useful in form inputs,
+            # while a normal JSON request already supplies strings as Python
+            # strings and should not need another layer of JSON quoting.
+            data = decoded
+
+        if isinstance(data, str):
+            value = data.strip()
+            if not value or len(value) > 200:
+                raise serializers.ValidationError(
+                    "Provide a non-empty location up to 200 characters."
+                )
+            return value
+
+        if isinstance(data, dict):
+            location = LocationInputSerializer(data=data)
+            location.is_valid(raise_exception=True)
+            return location.validated_data
+
+        self.fail("invalid")
+
+
 class RouteRequestSerializer(serializers.Serializer):
-    start = serializers.JSONField()
-    finish = serializers.JSONField()
-
-    def validate(self, attrs):
-        for field in ("start", "finish"):
-            value = attrs[field]
-
-            if isinstance(value, str):
-                value = value.strip()
-                if not value or len(value) > 200:
-                    raise serializers.ValidationError({
-                        field: "Provide a non-empty location up to 200 characters."
-                    })
-                attrs[field] = value
-
-            elif isinstance(value, dict):
-                location = LocationInputSerializer(data=value)
-                location.is_valid(raise_exception=True)
-                attrs[field] = location.validated_data
-
-            else:
-                raise serializers.ValidationError({
-                    field: "Provide a location string or lat/lng object."
-                })
-
-        return attrs
+    start = LocationField()
+    finish = LocationField()
