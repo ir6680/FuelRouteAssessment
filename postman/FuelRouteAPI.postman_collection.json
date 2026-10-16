@@ -1,0 +1,20 @@
+{
+  "info": {
+    "name": "Fuel Route API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{ "key": "baseUrl", "value": "http://127.0.0.1:8000" }],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/health/" } },
+    { "name": "Readiness", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/readiness/" } },
+    {
+      "name": "Route and fuel estimate",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"start\": \"Austin, TX\",\n  \"finish\": {\"lat\": 29.7604, \"lng\": -95.3698}\n}" },
+        "url": "{{baseUrl}}/api/v1/route/"
+      }
+    }
+  ]
+}

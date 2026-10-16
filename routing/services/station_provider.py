@@ -1,94 +1,58 @@
+"""Offline fuel station locations derived from the Census Gazetteer.
 
-import requests
+Coordinates are city/place centroids, not verified station entrances. This
+provider deliberately makes no OSM requests and never manufactures prices.
+"""
+from pathlib import Path
 
-OVERPASS_URLS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.osm.jp/api/interpreter",
-]
+from django.conf import settings
 
-MAX_ROUTE_POINTS = 60
+from routing.services.csv_cleaner import clean_csv
+from routing.services.gazetteer import resolve_place
 
 
-def get_fuel_stations_near_route(
-    route_geometry,
-    radius_meters=5000,
-):
-    """Fetch OSM fuel stations near sampled route points."""
+FUEL_CSV_PATH = Path(settings.BASE_DIR) / "data" / "fuel-prices-for-be-assessment.csv"
 
-    if not 1000 <= radius_meters <= 30000:
-        raise ValueError("Radius must be between 1,000 and 30,000 meters.")
 
-    coordinates = route_geometry.get("coordinates", [])
+def load_fuel_stations():
+    csv_stations, csv_report, excluded = clean_csv(FUEL_CSV_PATH)
+    stations = []
+    unmatched = {"not_found": 0, "ambiguous": 0}
+    for station in csv_stations:
+        place, result = resolve_place(station["city"], station["state"])
+        if not place:
+            unmatched[result] = unmatched.get(result, 0) + 1
+            continue
+        stations.append({
+            **station,
+            "latitude": place["latitude"],
+            "longitude": place["longitude"],
+            "geocode_precision": place["geocode_precision"],
+            "geocode_source": "US Census Gazetteer",
+            "coordinate_warning": (
+                "City/state centroid; not the verified fuel station location."
+            ),
+        })
+    coverage = {
+        "csv_unique_stations": len(csv_stations),
+        "located_stations": len(stations),
+        "unmatched_stations": len(csv_stations) - len(stations),
+        "coverage_percent": round(100 * len(stations) / len(csv_stations), 2) if csv_stations else 0,
+        "unmatched_by_reason": unmatched,
+        "excluded_csv_rows": csv_report["excluded_rows"],
+        "excluded_csv_reasons": csv_report["excluded_by_reason"],
+    }
+    return stations, coverage, csv_report
 
-    if len(coordinates) < 2:
-        raise ValueError("Route must contain at least two coordinates.")
 
-    if len(coordinates) > MAX_ROUTE_POINTS:
-        step = (len(coordinates) - 1) / (MAX_ROUTE_POINTS - 1)
-        coordinates = [
-            coordinates[round(i * step)]
-            for i in range(MAX_ROUTE_POINTS)
-        ]
+def get_fuel_stations_near_route(route_geometry, radius_miles=3.0):
+    """Return Gazetteer-located CSV stations near the route, with coverage."""
+    from routing.services.route_geometry import distance_to_route
 
-    route_points = ",".join(
-        f"{lat},{lon}" for lon, lat in coordinates
-    )
-
-    query = f"""
-    [out:json][timeout:45];
-    nwr["amenity"="fuel"]
-      (around:{radius_meters},{route_points});
-    out center tags;
-    """
-
-    errors = []
-
-    for url in OVERPASS_URLS:
-        try:
-            response = requests.post(
-                url,
-                data={"data": query},
-                headers={"User-Agent": "FuelRouteAssessment/1.0"},
-                timeout=(5, 55),
-            )
-            response.raise_for_status()
-            elements = response.json().get("elements", [])
-
-            stations = []
-
-            for element in elements:
-                tags = element.get("tags", {})
-
-                if "lat" in element and "lon" in element:
-                    latitude = element["lat"]
-                    longitude = element["lon"]
-                else:
-                    center = element.get("center", {})
-                    latitude = center.get("lat")
-                    longitude = center.get("lon")
-
-                if latitude is None or longitude is None:
-                    continue
-
-                stations.append({
-                    "osm_type": element.get("type"),
-                    "osm_id": element.get("id"),
-                    "name": tags.get("name"),
-                    "brand": tags.get("brand"),
-                    "operator": tags.get("operator"),
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "address": tags.get("addr:street"),
-                    "city": tags.get("addr:city") or tags.get("addr:town"),
-                    "state": tags.get("addr:state"),
-                })
-
-            return stations
-
-        except (requests.RequestException, ValueError) as exc:
-            errors.append(f"{url}: {exc}")
-
-    raise RuntimeError(
-        "All Overpass endpoints failed. " + " | ".join(errors)
-    )
+    stations, coverage, _report = load_fuel_stations()
+    nearby = []
+    for station in stations:
+        distance = distance_to_route(station, route_geometry)
+        if distance <= radius_miles:
+            nearby.append({**station, "distance_to_route_miles": distance})
+    return nearby, coverage

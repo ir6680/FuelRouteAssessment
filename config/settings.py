@@ -24,12 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-u!zl_&7@8g)z!7*f(m4+t46e!c8yvois9cd)4qbqz&oxk^+e2j'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "development-only-change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if host.strip()]
 
 
 # Application definition
@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # our app
     'routing',
+    'rest_framework',
+
 ]
 
 MIDDLEWARE = [
@@ -141,3 +143,12 @@ GEOCODING_BASE_URL = os.getenv(
     "GEOCODING_BASE_URL",
     "https://api.heigit.org/pelias/v1",
 )
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": str(BASE_DIR / "data" / "cache"),
+        "TIMEOUT": 86400,
+        "OPTIONS": {"MAX_ENTRIES": 1000},
+    }
+}
